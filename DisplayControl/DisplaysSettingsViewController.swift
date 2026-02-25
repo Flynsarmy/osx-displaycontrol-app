@@ -160,6 +160,7 @@ extension DisplaysSettingsViewController: NSTableViewDelegate {
                 cell = AliasCell()
                 cell?.identifier = cellId
             }
+            cell?.delegate = self
             cell?.configure(displayID: display.id,
                             placeholder: display.hardwareName,
                             currentAlias: DisplayAliasStore.shared.alias(for: display.id))
@@ -170,11 +171,53 @@ extension DisplaysSettingsViewController: NSTableViewDelegate {
     func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat { 36 }
 }
 
+// MARK: - AliasCellDelegate
+
+protocol AliasCellDelegate: AnyObject {
+    func aliasCellDidTabForward(_ cell: AliasCell)
+    func aliasCellDidTabBackward(_ cell: AliasCell)
+}
+
+extension DisplaysSettingsViewController: AliasCellDelegate {
+
+    private func row(for cell: AliasCell) -> Int? {
+        for row in 0..<tableView.numberOfRows {
+            if let aliasCell = tableView.view(atColumn: 1, row: row, makeIfNecessary: false) as? AliasCell,
+               aliasCell === cell {
+                return row
+            }
+        }
+        return nil
+    }
+
+    private func focusAlias(at row: Int) {
+        tableView.scrollRowToVisible(row)
+        if let cell = tableView.view(atColumn: 1, row: row, makeIfNecessary: true) as? AliasCell {
+            cell.focusField()
+        }
+    }
+
+    func aliasCellDidTabForward(_ cell: AliasCell) {
+        guard let row = row(for: cell) else { return }
+        let next = row + 1
+        guard next < displays.count else { return }
+        focusAlias(at: next)
+    }
+
+    func aliasCellDidTabBackward(_ cell: AliasCell) {
+        guard let row = row(for: cell) else { return }
+        let prev = row - 1
+        guard prev >= 0 else { return }
+        focusAlias(at: prev)
+    }
+}
+
 // MARK: - AliasCell
 
 /// A table cell that owns an editable NSTextField for the alias.
-private class AliasCell: NSTableCellView, NSTextFieldDelegate {
+class AliasCell: NSTableCellView, NSTextFieldDelegate {
 
+    weak var delegate: AliasCellDelegate?
     private var displayID: CGDirectDisplayID = 0
     private let field: NSTextField
 
@@ -201,7 +244,40 @@ private class AliasCell: NSTableCellView, NSTextFieldDelegate {
         field.stringValue = currentAlias ?? ""
     }
 
-    // Save on commit (Return key or focus-out)
+    func focusField() {
+        // selectText selects all content and gives the field focus —
+        // the same behaviour AppKit uses when Tab-navigating between fields.
+        field.selectText(nil)
+    }
+
+    // Intercept Tab *before* AppKit moves the key view so we can:
+    //  1. Save the current value.
+    //  2. Move focus ourselves.
+    //  3. Return true to suppress the native Tab chain (which would otherwise
+    //     steal focus away from the field we just focused / wipe its text).
+    func control(_ control: NSControl, textView: NSTextView,
+                 doCommandBy commandSelector: Selector) -> Bool {
+        if commandSelector == #selector(NSResponder.insertTab(_:)) {
+            DisplayAliasStore.shared.setAlias(field.stringValue, for: displayID)
+            // Defer so the current event fully unwinds before we redirect focus.
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.delegate?.aliasCellDidTabForward(self)
+            }
+            return true // Suppress native Tab handling
+        }
+        if commandSelector == #selector(NSResponder.insertBacktab(_:)) {
+            DisplayAliasStore.shared.setAlias(field.stringValue, for: displayID)
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.delegate?.aliasCellDidTabBackward(self)
+            }
+            return true // Suppress native Shift+Tab handling
+        }
+        return false
+    }
+
+    // Save on commit (Return key or focus-out). Tab is handled above.
     func controlTextDidEndEditing(_ obj: Notification) {
         DisplayAliasStore.shared.setAlias(field.stringValue, for: displayID)
     }
