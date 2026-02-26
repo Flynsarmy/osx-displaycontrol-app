@@ -1,16 +1,11 @@
 # Display Control
 
-A lightweight macOS menu bar app for managing connected displays.
+A lightweight macOS menu bar app for managing connected displays. Quickly switch between extended and mirrored displays right from the menu bar.
 
-## Features
+## Screenshots
 
-- **Monitor icon** in the menu bar — no Dock icon, stays out of your way
-- **Lists all connected displays** with their real names (read from IOKit)
-- **Per-display submenu** with:
-  - ✓ **Extended Display** — use the display independently (checkmarked when active)
-  - **Mirror of [Display Name]** — one entry per other connected display (checkmarked when active)
-- **Auto-refreshes** when displays are plugged or unplugged
-- Changes are applied **permanently**, consistent with System Preferences behaviour
+![](assets/screenshot1.jpg)
+![](assets/screenshot2.png)
 
 ## Requirements
 
@@ -42,17 +37,6 @@ open build/Release/DisplayControl.app
 ```
 
 Or open `DisplayControl.xcodeproj` in Xcode and press **⌘R**.
-
-## How It Works
-
-| Concern | API |
-|---------|-----|
-| Menu bar icon | `NSStatusBar` / `NSStatusItem` |
-| Display enumeration | `CGGetActiveDisplayList` |
-| Display names | `IOServiceGetMatchingServices` + `IODisplayCreateInfoDictionary` |
-| Mirror state | `CGDisplayMirrorsDisplay` |
-| Apply changes | `CGBeginDisplayConfiguration` / `CGCompleteDisplayConfiguration` |
-| Change notifications | `CGDisplayRegisterReconfigurationCallback` |
 
 ## License
 
