@@ -28,19 +28,43 @@ class DisplayManager {
 
     private func buildDisplayList(useAliases: Bool) -> [DisplayInfo] {
         var displayCount: UInt32 = 0
-        CGGetActiveDisplayList(0, nil, &displayCount)
+        CGGetOnlineDisplayList(0, nil, &displayCount)
 
         guard displayCount > 0 else { return [] }
 
         var displayIDs = [CGDirectDisplayID](repeating: 0, count: Int(displayCount))
-        CGGetActiveDisplayList(displayCount, &displayIDs, &displayCount)
+        CGGetOnlineDisplayList(displayCount, &displayIDs, &displayCount)
+
+        // Build a quick id->name map so mirrored displays can reference the master name.
+        var hwNames: [CGDirectDisplayID: String] = [:]
+        for id in displayIDs { hwNames[id] = hardwareName(for: id) }
 
         return displayIDs.map { id in
-            let hw = hardwareName(for: id)
-            let alias = useAliases ? DisplayAliasStore.shared.alias(for: id) : nil
+            let hw = hwNames[id] ?? hardwareName(for: id)
+            let masterID = CGDisplayMirrorsDisplay(id)
+            let isMirroring = masterID != kCGNullDirectDisplay
+
+            // When useAliases is false (Settings UI) show the raw hardware name.
+            // When useAliases is true (menu) append a mirroring hint.
+            let baseName: String
+            if useAliases {
+                let alias = DisplayAliasStore.shared.alias(for: id)
+                baseName = alias ?? hw
+            } else {
+                baseName = hw
+            }
+
+            let displayedName: String
+            if isMirroring && useAliases {
+                let masterName = hwNames[masterID].flatMap { DisplayAliasStore.shared.alias(for: masterID) ?? $0 } ?? baseName
+                displayedName = "\(baseName) (Mirroring \(masterName))"
+            } else {
+                displayedName = baseName
+            }
+
             return DisplayInfo(
                 id: id,
-                name: alias ?? hw,
+                name: displayedName,
                 hardwareName: hw,
                 isBuiltIn: CGDisplayIsBuiltin(id) != 0
             )
